@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, Download } from "lucide-react";
+import { Search, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, PageHeader, Pill, Stat, statusTone } from "@/components/admin/kit";
-import { KES, orders } from "@/lib/mock-data";
+import { KES } from "@/lib/format";
+import { useOrders, useOrderStats, ORDER_STATUSES } from "@/lib/queries/orders";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_admin/orders/")({
@@ -18,11 +19,14 @@ export const Route = createFileRoute("/_admin/orders/")({
   component: OrdersPage,
 });
 
-const tabs = ["All", "Pending", "Confirmed", "Processing", "Ready for delivery", "Shipped", "Delivered", "Cancelled", "Refunded"];
+const tabs = ["All", ...ORDER_STATUSES];
 
 function OrdersPage() {
   const [tab, setTab] = useState("All");
   const [q, setQ] = useState("");
+
+  const { data: orders = [], isLoading } = useOrders();
+  const { data: stats } = useOrderStats();
 
   const rows = useMemo(
     () =>
@@ -33,8 +37,24 @@ function OrdersPage() {
             o.customer.toLowerCase().includes(q.toLowerCase()) ||
             o.phone.includes(q)),
       ),
-    [tab, q],
+    [orders, tab, q],
   );
+
+  const handleExport = () => {
+    const header = ["Order", "Customer", "Phone", "Email", "Total", "Payment", "Status", "Location", "Date"];
+    const lines = rows.map((o) =>
+      [o.number, o.customer, o.phone, o.email, o.total, o.payment, o.status, o.location, o.date].join(","),
+    );
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "orders.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Orders exported");
+  };
 
   return (
     <div className="space-y-8">
@@ -44,7 +64,7 @@ function OrdersPage() {
         description="Every order placed on lucebylucia.co.ke, including guest checkouts."
         actions={
           <button
-            onClick={() => toast.success("Orders exported")}
+            onClick={handleExport}
             className="inline-flex h-10 items-center gap-2 border border-border bg-card px-4 text-sm hover:border-gold"
           >
             <Download className="size-4" strokeWidth={1.5} /> Export
@@ -53,10 +73,10 @@ function OrdersPage() {
       />
 
       <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Orders today" value="6" delta="+2" hint="vs yesterday" />
-        <Stat label="Awaiting payment" value="1" hint="M-Pesa pending" />
-        <Stat label="To fulfil" value="3" hint="confirmed & packed" />
-        <Stat label="Order value today" value={KES(58200)} delta="+9.1%" />
+        <Stat label="Orders today" value={String(stats?.todayCount ?? 0)} delta={stats?.countDelta} hint="vs yesterday" />
+        <Stat label="Awaiting payment" value={String(stats?.awaitingPayment ?? 0)} hint="M-Pesa pending" />
+        <Stat label="To fulfil" value={String(stats?.toFulfil ?? 0)} hint="confirmed & packed" />
+        <Stat label="Order value today" value={KES(stats?.todayValue ?? 0)} delta={stats?.valueDelta} />
       </div>
 
       <div className="surface flex flex-wrap items-center gap-3 p-3">
@@ -86,7 +106,11 @@ function OrdersPage() {
       </div>
 
       <div className="surface overflow-x-auto">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading orders…
+          </div>
+        ) : rows.length === 0 ? (
           <EmptyState title="No orders here yet" description="Orders with this status will appear in this view." />
         ) : (
           <table className="w-full min-w-[1000px] text-sm">
@@ -122,8 +146,8 @@ function OrdersPage() {
                   <td className="py-3">
                     <Pill tone={statusTone(o.status)}>{o.status}</Pill>
                   </td>
-                  <td className="py-3 text-muted-foreground">{o.fulfilment}</td>
-                  <td className="px-5 py-3 text-muted-foreground">{o.date}</td>
+                  <td className="py-3 text-muted-foreground">{o.location || "—"}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{new Date(o.date).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 // ---- PageHeader ----
 
 interface PageHeaderProps {
-  eyebrow?: string;
+  eyebrow?: ReactNode;
   title: string;
   description?: string;
   actions?: ReactNode;
@@ -14,9 +14,12 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        {eyebrow && (
-          <p className="text-[11px] tracking-[0.2em] text-gold uppercase">{eyebrow}</p>
-        )}
+        {eyebrow &&
+          (typeof eyebrow === "string" ? (
+            <p className="text-[11px] tracking-[0.2em] text-gold uppercase">{eyebrow}</p>
+          ) : (
+            <div className="text-[11px] tracking-[0.2em] text-gold uppercase">{eyebrow}</div>
+          ))}
         <h1 className="mt-1 text-2xl font-medium text-foreground">{title}</h1>
         {description && (
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">{description}</p>
@@ -29,7 +32,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
 
 // ---- Pill ----
 
-export type PillTone = "success" | "warning" | "danger" | "neutral" | "info" | "gold";
+export type PillTone = "success" | "warning" | "danger" | "neutral" | "info" | "gold" | "ink";
 
 const toneClasses: Record<PillTone, string> = {
   success: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -38,6 +41,7 @@ const toneClasses: Record<PillTone, string> = {
   neutral: "bg-muted text-muted-foreground border-border",
   info: "bg-blue-50 text-blue-700 border-blue-200",
   gold: "bg-gold-soft/30 text-gold border-gold/40",
+  ink: "bg-ink text-primary-foreground border-ink",
 };
 
 interface PillProps {
