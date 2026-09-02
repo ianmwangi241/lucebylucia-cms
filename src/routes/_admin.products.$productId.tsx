@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ProductEditor } from "@/components/admin/ProductEditor";
 import { EmptyState } from "@/components/admin/kit";
-import { products } from "@/lib/mock-data";
+import { useProduct } from "@/lib/queries/products";
 
 export const Route = createFileRoute("/_admin/products/$productId")({
   head: () => ({
@@ -17,9 +17,9 @@ export const Route = createFileRoute("/_admin/products/$productId")({
 
 function EditProduct() {
   const { productId } = Route.useParams();
-  const product = products.find((p) => p.id === productId);
+  const { data: product, isLoading, isError } = useProduct(productId);
 
-  if (!product) {
+  if (!isLoading && (isError || !product)) {
     return (
       <EmptyState
         title="Product not found"
@@ -33,5 +33,5 @@ function EditProduct() {
     );
   }
 
-  return <ProductEditor product={product} />;
+  return <ProductEditor productId={productId} />;
 }

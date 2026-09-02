@@ -1,393 +1,422 @@
-import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { Plus, Trash2, Star, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { GripVertical, ImagePlus, Star, Trash2, X } from "lucide-react";
-import { Field, Panel, Pill } from "@/components/admin/kit";
-import { assetUrl, categories, collections, type Product } from "@/lib/mock-data";
+import { PageHeader, Pill } from "@/components/admin/kit";
+import { KES, assetUrl } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useCategories, useCollections } from "@/lib/queries/categories";
+import {
+  useProduct,
+  useSaveProduct,
+  type ImageInput,
+  type ProductFull,
+  type ProductStatus,
+  type VariantInput,
+} from "@/lib/queries/products";
 
-const input =
-  "h-10 w-full border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-gold";
-const area =
-  "w-full border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-gold";
+interface ProductEditorProps {
+  productId?: string; // absent = create mode
+}
 
-const ALL_SIZES = ["XS", "S", "M", "L", "XL"];
-const ALL_COLORS = ["Black", "Brown", "Cream", "Ivory", "Rose"];
+const emptyProduct: ProductFull = {
+  id: "",
+  name: "",
+  slug: "",
+  description: "",
+  short_description: "",
+  base_price: 0,
+  sale_price: null,
+  status: "Draft",
+  featured: false,
+  variants: [],
+  images: [],
+  categoryIds: [],
+  collectionIds: [],
+};
 
-export function ProductEditor({ product }: { product?: Product }) {
-  const [tab, setTab] = useState("Details");
-  const [sizes, setSizes] = useState<string[]>(product?.sizes ?? ["S", "M", "L"]);
-  const [colors, setColors] = useState<string[]>(product?.colors ?? ["Black"]);
-  const [images, setImages] = useState<string[]>(
-    product
-      ? [product.image, "signature-1.webp", "everyday-set-long-1.webp", "sahara.webp"]
-      : ["aura-set-long.webp", "signature-1.webp"],
-  );
-  const [primary, setPrimary] = useState(0);
-  const [track, setTrack] = useState(true);
-  const [backorder, setBackorder] = useState(false);
-  const [drag, setDrag] = useState<number | null>(null);
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+}
 
-  const move = (from: number, to: number) => {
-    setImages((imgs) => {
-      const next = [...imgs];
-      const [it] = next.splice(from, 1);
-      next.splice(to, 0, it);
-      return next;
-    });
-    setPrimary((p) => (p === from ? to : p));
+export function ProductEditor({ productId }: ProductEditorProps) {
+  const isEditing = !!productId;
+  const navigate = useNavigate();
+  const { data: existing, isLoading } = useProduct(productId);
+  const { data: categories = [] } = useCategories();
+  const { data: collections = [] } = useCollections();
+  const saveProduct = useSaveProduct();
+
+  const [form, setForm] = useState<ProductFull>(emptyProduct);
+  const [slugTouched, setSlugTouched] = useState(false);
+
+  useEffect(() => {
+    if (existing) setForm(existing);
+  }, [existing]);
+
+  if (isEditing && isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+      </div>
+    );
+  }
+
+  const updateField = <K extends keyof ProductFull>(key: K, value: ProductFull[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  const updateVariant = (index: number, patch: Partial<VariantInput>) =>
+    setForm((f) => ({
+      ...f,
+      variants: f.variants.map((v, i) => (i === index ? { ...v, ...patch } : v)),
+    }));
+
+  const addVariant = () =>
+    setForm((f) => ({
+      ...f,
+      variants: [
+        ...f.variants,
+        { sku: "", size: null, color: null, price: f.base_price, stock_quantity: 0, is_available: true },
+      ],
+    }));
+
+  const removeVariant = (index: number) =>
+    setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== index) }));
+
+  const addImageFile = (file: File) => {
+    const img: ImageInput = {
+      storage_path: "",
+      alt_text: form.name,
+      is_primary: form.images.length === 0,
+      sort_order: form.images.length,
+      file,
+    };
+    setForm((f) => ({ ...f, images: [...f.images, img] }));
   };
 
-  const toggleIn = (arr: string[], set: (v: string[]) => void, v: string) =>
-    set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const setPrimaryImage = (index: number) =>
+    setForm((f) => ({
+      ...f,
+      images: f.images.map((img, i) => ({ ...img, is_primary: i === index })),
+    }));
 
-  const variants = sizes.flatMap((s) => colors.map((c) => ({ size: s, color: c })));
+  const removeImage = (index: number) =>
+    setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== index) }));
+
+  const toggleCategory = (id: string) =>
+    setForm((f) => ({
+      ...f,
+      categoryIds: f.categoryIds.includes(id)
+        ? f.categoryIds.filter((c) => c !== id)
+        : [...f.categoryIds, id],
+    }));
+
+  const toggleCollection = (id: string) =>
+    setForm((f) => ({
+      ...f,
+      collectionIds: f.collectionIds.includes(id)
+        ? f.collectionIds.filter((c) => c !== id)
+        : [...f.collectionIds, id],
+    }));
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+    if (form.variants.length === 0) {
+      toast.error("Add at least one variant (SKU) before saving");
+      return;
+    }
+
+    try {
+      const id = await saveProduct.mutateAsync({
+        ...form,
+        slug: form.slug || slugify(form.name),
+      });
+      toast.success(isEditing ? "Product updated" : "Product created");
+      if (!isEditing) {
+        navigate({ to: "/products/$productId", params: { productId: id } });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save product");
+    }
+  };
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <p className="eyebrow">{product ? "Editing product" : "New product"}</p>
-          <h1 className="font-display text-3xl md:text-4xl">{product?.name ?? "Untitled piece"}</h1>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Pill tone={product?.status === "Published" ? "success" : "warning"}>
-              {product?.status ?? "Draft"}
-            </Pill>
-            <span>{product?.sku ?? "SKU pending"}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/products" className="inline-flex h-10 items-center border border-border bg-card px-4 text-sm hover:border-gold">
-            Cancel
-          </Link>
+      <PageHeader
+        eyebrow="Commerce"
+        title={isEditing ? `Edit ${existing?.name ?? "product"}` : "New product"}
+        description="Core details, variants, photography, categories and collections."
+        actions={
           <button
-            onClick={() => toast.success("Saved as draft")}
-            className="inline-flex h-10 items-center border border-border bg-card px-4 text-sm hover:border-gold"
+            onClick={handleSave}
+            disabled={saveProduct.isPending}
+            className="inline-flex h-10 items-center gap-2 bg-ink px-4 text-sm text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            Save draft
+            {saveProduct.isPending && <Loader2 className="size-4 animate-spin" />}
+            {isEditing ? "Save changes" : "Create product"}
           </button>
-          <button
-            onClick={() => toast.success(product ? "Product updated" : "Product published")}
-            className="inline-flex h-10 items-center bg-ink px-5 text-sm text-primary-foreground hover:opacity-90"
+        }
+      />
+
+      {/* Core fields */}
+      <div className="surface grid gap-4 p-5 sm:grid-cols-2">
+        <Field label="Name">
+          <input
+            value={form.name}
+            onChange={(e) => {
+              updateField("name", e.target.value);
+              if (!slugTouched) updateField("slug", slugify(e.target.value));
+            }}
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
+        <Field label="Slug">
+          <input
+            value={form.slug}
+            onChange={(e) => {
+              setSlugTouched(true);
+              updateField("slug", e.target.value);
+            }}
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
+        <Field label="Status">
+          <select
+            value={form.status}
+            onChange={(e) => updateField("status", e.target.value as ProductStatus)}
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
           >
-            {product ? "Save changes" : "Publish"}
-          </button>
-        </div>
+            <option>Draft</option>
+            <option>Published</option>
+            <option>Archived</option>
+          </select>
+        </Field>
+        <Field label="Base price (KES)">
+          <input
+            type="number"
+            value={form.base_price}
+            onChange={(e) => updateField("base_price", Number(e.target.value))}
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
+        <Field label="Sale price (optional)">
+          <input
+            type="number"
+            value={form.sale_price ?? ""}
+            onChange={(e) =>
+              updateField("sale_price", e.target.value === "" ? null : Number(e.target.value))
+            }
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
+        <Field label="Featured">
+          <label className="flex h-10 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.featured}
+              onChange={(e) => updateField("featured", e.target.checked)}
+            />
+            Show in featured collections
+          </label>
+        </Field>
+        <Field label="Short description" full>
+          <input
+            value={form.short_description ?? ""}
+            onChange={(e) => updateField("short_description", e.target.value)}
+            className="h-10 w-full border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
+        <Field label="Description" full>
+          <textarea
+            value={form.description ?? ""}
+            onChange={(e) => updateField("description", e.target.value)}
+            rows={4}
+            className="w-full border border-border bg-background p-3 text-sm outline-none focus:border-gold"
+          />
+        </Field>
       </div>
 
-      <div className="flex gap-1 border-b border-border">
-        {["Details", "Media", "Variants", "Inventory", "SEO"].map((t) => (
+      {/* Variants */}
+      <div className="surface p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-medium">Variants</h2>
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "-mb-px border-b-2 px-4 py-2.5 text-sm transition-colors",
-              tab === t ? "border-gold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
+            onClick={addVariant}
+            className="inline-flex items-center gap-1.5 text-xs tracking-widest text-muted-foreground hover:text-gold"
           >
-            {t}
+            <Plus className="size-3.5" /> ADD VARIANT
           </button>
-        ))}
-      </div>
-
-      {tab === "Details" && (
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
-            <Panel title="Basic information">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Product name" className="sm:col-span-2">
-                  <input className={input} defaultValue={product?.name} placeholder="Aura Set Long" />
-                </Field>
-                <Field label="Slug" hint="lucebylucia.co.ke/shop/…">
-                  <input className={input} defaultValue={product?.slug} placeholder="aura-set-long" />
-                </Field>
-                <Field label="SKU">
-                  <input className={input} defaultValue={product?.sku} placeholder="LUC-AUR-001" />
-                </Field>
-                <Field label="Short description" className="sm:col-span-2">
-                  <input className={input} defaultValue={product?.shortDescription} />
-                </Field>
-                <Field label="Description" className="sm:col-span-2">
-                  <textarea rows={6} className={area} defaultValue={product?.description} />
-                </Field>
-              </div>
-            </Panel>
-
-            <Panel title="Pricing">
-              <div className="grid gap-4 sm:grid-cols-4">
-                <Field label="Price (KSh)">
-                  <input className={input} defaultValue={product?.price} />
-                </Field>
-                <Field label="Sale price (KSh)">
-                  <input className={input} defaultValue={product?.salePrice ?? ""} placeholder="—" />
-                </Field>
-                <Field label="Cost price (KSh)">
-                  <input className={input} defaultValue={product?.costPrice} />
-                </Field>
-                <Field label="Currency">
-                  <select className={input}>
-                    <option>KES — Kenyan Shilling</option>
-                  </select>
-                </Field>
-              </div>
-            </Panel>
-          </div>
-
-          <div className="space-y-6">
-            <Panel title="Organisation">
-              <div className="space-y-4">
-                <Field label="Status">
-                  <select className={input} defaultValue={product?.status ?? "Draft"}>
-                    <option>Draft</option>
-                    <option>Published</option>
-                    <option>Archived</option>
-                  </select>
-                </Field>
-                <Field label="Category">
-                  <select className={input} defaultValue={product?.category}>
-                    {categories.map((c) => (
-                      <option key={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Collection">
-                  <select className={input} defaultValue={product?.collection}>
-                    {collections.map((c) => (
-                      <option key={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Tags" hint="Press enter to add">
-                  <input className={input} placeholder="nairobi, occasion, silk" />
-                </Field>
-                <div className="flex flex-wrap gap-1.5">
-                  {(product?.tags ?? ["ready-to-wear"]).map((t) => (
-                    <Pill key={t} tone="blush">
-                      {t} <X className="size-3 cursor-pointer" />
-                    </Pill>
-                  ))}
+        </div>
+        {form.variants.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No variants yet — add at least one SKU.</p>
+        ) : (
+          <div className="space-y-2">
+            {form.variants.map((v, i) => (
+              <div key={v.id ?? `new-${i}`} className="grid grid-cols-6 items-center gap-2">
+                <input
+                  placeholder="SKU"
+                  value={v.sku}
+                  onChange={(e) => updateVariant(i, { sku: e.target.value })}
+                  className="h-9 border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                />
+                <input
+                  placeholder="Size"
+                  value={v.size ?? ""}
+                  onChange={(e) => updateVariant(i, { size: e.target.value || null })}
+                  className="h-9 border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                />
+                <input
+                  placeholder="Color"
+                  value={v.color ?? ""}
+                  onChange={(e) => updateVariant(i, { color: e.target.value || null })}
+                  className="h-9 border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                />
+                <input
+                  type="number"
+                  placeholder="Price"
+                  value={v.price}
+                  onChange={(e) => updateVariant(i, { price: Number(e.target.value) })}
+                  className="h-9 border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                />
+                <input
+                  type="number"
+                  placeholder="Stock"
+                  value={v.stock_quantity}
+                  onChange={(e) => updateVariant(i, { stock_quantity: Number(e.target.value) })}
+                  className="h-9 border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={v.is_available}
+                      onChange={(e) => updateVariant(i, { is_available: e.target.checked })}
+                    />
+                    Available
+                  </label>
+                  <button onClick={() => removeVariant(i)} className="text-destructive">
+                    <Trash2 className="size-4" />
+                  </button>
                 </div>
               </div>
-            </Panel>
-
-            <Panel title="Primary image" padded={false}>
-              <img
-                src={assetUrl(images[primary] ?? images[0])}
-                alt="Primary product"
-                className="aspect-[3/4] w-full object-cover"
-              />
-            </Panel>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {tab === "Media" && (
-        <Panel
-          title="Product photography"
-          action={
-            <button
-              onClick={() => toast.success("Upload opens the site-images bucket")}
-              className="inline-flex items-center gap-2 text-[11px] tracking-widest text-muted-foreground hover:text-foreground"
-            >
-              <ImagePlus className="size-3.5" /> UPLOAD
-            </button>
-          }
-        >
-          <p className="mb-4 text-xs text-muted-foreground">
-            Drag to reorder. The first image is the primary image shown in the shop grid. Files are stored in
-            the <span className="text-foreground">site-images</span> bucket.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {images.map((img, i) => (
-              <figure
-                key={img + i}
-                draggable
-                onDragStart={() => setDrag(i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (drag !== null && drag !== i) move(drag, i);
-                  setDrag(null);
-                }}
-                className={cn(
-                  "group relative border border-border bg-card transition-shadow",
-                  drag === i && "opacity-50",
-                )}
-              >
-                <img src={assetUrl(img)} alt={img} className="aspect-[3/4] w-full object-cover" loading="lazy" />
-                {i === primary && (
-                  <span className="absolute left-2 top-2">
-                    <Pill tone="gold">Primary</Pill>
-                  </span>
-                )}
-                <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-background/90 px-2 py-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <GripVertical className="size-3.5 cursor-grab text-muted-foreground" />
-                  <button onClick={() => setPrimary(i)} title="Set primary">
-                    <Star className={cn("size-3.5", i === primary ? "fill-gold text-gold" : "text-muted-foreground")} />
-                  </button>
-                  <select className="ml-auto border border-border bg-background px-1 text-[10px]">
-                    <option>No variant</option>
-                    {colors.map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </select>
+      {/* Images */}
+      <div className="surface p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-medium">Photography</h2>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs tracking-widest text-muted-foreground hover:text-gold">
+            <Plus className="size-3.5" /> ADD IMAGE
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) addImageFile(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        {form.images.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No photos yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {form.images.map((img, i) => (
+              <div key={img.id ?? `new-${i}`} className="relative w-32">
+                <img
+                  src={img.file ? URL.createObjectURL(img.file) : assetUrl(img.storage_path)}
+                  alt={img.alt_text ?? ""}
+                  className="aspect-square w-32 rounded border border-border object-cover"
+                />
+                <div className="mt-1 flex items-center justify-between">
                   <button
-                    onClick={() => setImages((x) => x.filter((_, j) => j !== i))}
-                    className="text-destructive"
-                    title="Delete image"
+                    onClick={() => setPrimaryImage(i)}
+                    className={cn(
+                      "flex items-center gap-1 text-[11px]",
+                      img.is_primary ? "text-gold" : "text-muted-foreground hover:text-gold",
+                    )}
                   >
+                    <Star className="size-3" fill={img.is_primary ? "currentColor" : "none"} />
+                    {img.is_primary ? "Primary" : "Set primary"}
+                  </button>
+                  <button onClick={() => removeImage(i)} className="text-destructive">
                     <Trash2 className="size-3.5" />
                   </button>
                 </div>
-                <figcaption className="truncate border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
-                  {img}
-                </figcaption>
-              </figure>
+              </div>
             ))}
-            <button
-              onClick={() => setImages((x) => [...x, "zola-1.webp"])}
-              className="flex aspect-[3/4] flex-col items-center justify-center gap-2 border border-dashed border-border text-xs text-muted-foreground transition-colors hover:border-gold hover:text-foreground"
-            >
-              <ImagePlus className="size-5" strokeWidth={1.3} />
-              Add image
-            </button>
           </div>
-        </Panel>
-      )}
+        )}
+      </div>
 
-      {tab === "Variants" && (
-        <div className="space-y-6">
-          <Panel title="Options">
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div>
-                <p className="eyebrow mb-3">Size</p>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_SIZES.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => toggleIn(sizes, setSizes, s)}
-                      className={cn(
-                        "min-w-11 border px-3 py-1.5 text-xs transition-colors",
-                        sizes.includes(s) ? "border-ink bg-ink text-primary-foreground" : "border-border hover:border-gold",
-                      )}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="eyebrow mb-3">Colour</p>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => toggleIn(colors, setColors, c)}
-                      className={cn(
-                        "border px-3 py-1.5 text-xs transition-colors",
-                        colors.includes(c) ? "border-ink bg-ink text-primary-foreground" : "border-border hover:border-gold",
-                      )}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Panel>
+      {/* Categories & collections */}
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="surface p-5">
+          <h2 className="mb-3 text-sm font-medium">Categories</h2>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => toggleCategory(c.id)}
+                className={cn(
+                  "border px-2.5 py-1 text-xs transition-colors",
+                  form.categoryIds.includes(c.id)
+                    ? "border-gold bg-gold-soft/30 text-gold"
+                    : "border-border text-muted-foreground hover:border-gold",
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="surface p-5">
+          <h2 className="mb-3 text-sm font-medium">Collections</h2>
+          <div className="flex flex-wrap gap-2">
+            {collections.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => toggleCollection(c.id)}
+                className={cn(
+                  "border px-2.5 py-1 text-xs transition-colors",
+                  form.collectionIds.includes(c.id)
+                    ? "border-gold bg-gold-soft/30 text-gold"
+                    : "border-border text-muted-foreground hover:border-gold",
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-          <Panel title={`${variants.length} variants`} padded={false}>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-[10px] tracking-[0.18em] text-muted-foreground">
-                    <th className="px-5 py-3">VARIANT</th>
-                    <th className="py-3">SKU</th>
-                    <th className="py-3">PRICE</th>
-                    <th className="py-3">STOCK</th>
-                    <th className="px-5 py-3">IMAGE</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {variants.map((v, i) => (
-                    <tr key={`${v.size}-${v.color}`} className="hover:bg-accent/25">
-                      <td className="px-5 py-2.5">
-                        {v.size} / {v.color}
-                      </td>
-                      <td className="py-2.5">
-                        <input
-                          className="h-9 w-40 border border-border bg-background px-2 text-xs outline-none focus:border-gold"
-                          defaultValue={`${product?.sku ?? "LUC-NEW"}-${v.size}-${v.color.slice(0, 2).toUpperCase()}`}
-                        />
-                      </td>
-                      <td className="py-2.5">
-                        <input
-                          className="h-9 w-28 border border-border bg-background px-2 text-xs outline-none focus:border-gold"
-                          defaultValue={product?.price ?? 0}
-                        />
-                      </td>
-                      <td className="py-2.5">
-                        <input
-                          className="h-9 w-20 border border-border bg-background px-2 text-xs outline-none focus:border-gold"
-                          defaultValue={Math.max(0, (product?.qty ?? 10) - i)}
-                        />
-                      </td>
-                      <td className="px-5 py-2.5">
-                        <img
-                          src={assetUrl(images[i % images.length])}
-                          alt=""
-                          className="size-10 cursor-pointer object-cover"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+      {isEditing && existing && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          Current price shown to customers: <Pill tone="info">{KES(existing.sale_price ?? existing.base_price)}</Pill>
         </div>
       )}
-
-      {tab === "Inventory" && (
-        <Panel title="Inventory" className="max-w-2xl">
-          <div className="space-y-4">
-            <Field label="SKU">
-              <input className={input} defaultValue={product?.sku} />
-            </Field>
-            <label className="flex items-center justify-between border border-border px-4 py-3 text-sm">
-              <span>Track inventory</span>
-              <input type="checkbox" checked={track} onChange={(e) => setTrack(e.target.checked)} />
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Quantity">
-                <input className={input} defaultValue={product?.qty ?? 0} disabled={!track} />
-              </Field>
-              <Field label="Low-stock threshold">
-                <input className={input} defaultValue={product?.lowStock ?? 6} disabled={!track} />
-              </Field>
-            </div>
-            <label className="flex items-center justify-between border border-border px-4 py-3 text-sm">
-              <span>Allow backorders</span>
-              <input type="checkbox" checked={backorder} onChange={(e) => setBackorder(e.target.checked)} />
-            </label>
-          </div>
-        </Panel>
-      )}
-
-      {tab === "SEO" && (
-        <Panel title="Search & social" className="max-w-2xl">
-          <div className="space-y-4">
-            <Field label="Meta title">
-              <input className={input} defaultValue={`${product?.name ?? "New piece"} — Luce by Lucia`} />
-            </Field>
-            <Field label="Meta description">
-              <textarea rows={3} className={area} defaultValue={product?.shortDescription} />
-            </Field>
-            <Field label="Social sharing image">
-              <input className={input} defaultValue={product?.image ?? ""} />
-            </Field>
-          </div>
-        </Panel>
-      )}
     </div>
+  );
+}
+
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+  return (
+    <label className={cn("block space-y-1.5", full && "sm:col-span-2")}>
+      <span className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{label}</span>
+      {children}
+    </label>
   );
 }

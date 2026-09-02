@@ -1,9 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Plus, Search, SlidersHorizontal, Trash2, Download } from "lucide-react";
+import { Plus, Search, SlidersHorizontal, Trash2, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Pill, statusTone, EmptyState } from "@/components/admin/kit";
-import { KES, assetUrl, categories, products } from "@/lib/mock-data";
+import { KES, assetUrl } from "@/lib/format";
+import { useCategories } from "@/lib/queries/categories";
+import { useProducts, useDeleteProducts, useSetProductsStatus } from "@/lib/queries/products";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_admin/products/")({
@@ -27,6 +29,11 @@ function ProductsPage() {
   const [sort, setSort] = useState("Newest");
   const [selected, setSelected] = useState<string[]>([]);
 
+  const { data: products = [], isLoading } = useProducts();
+  const { data: categories = [] } = useCategories();
+  const deleteProducts = useDeleteProducts();
+  const setStatusMutation = useSetProductsStatus();
+
   const rows = useMemo(() => {
     let r = products.filter(
       (p) =>
@@ -44,10 +51,61 @@ function ProductsPage() {
             : a.name.localeCompare(b.name),
     );
     return r;
-  }, [q, status, category, sort]);
+  }, [products, q, status, category, sort]);
 
   const toggle = (id: string) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const handlePublish = () =>
+    setStatusMutation.mutate(
+      { ids: selected, status: "Published" },
+      {
+        onSuccess: () => {
+          toast.success("Products published");
+          setSelected([]);
+        },
+        onError: () => toast.error("Failed to publish products"),
+      },
+    );
+
+  const handleDraft = () =>
+    setStatusMutation.mutate(
+      { ids: selected, status: "Draft" },
+      {
+        onSuccess: () => {
+          toast.success("Products moved to draft");
+          setSelected([]);
+        },
+        onError: () => toast.error("Failed to update products"),
+      },
+    );
+
+  const handleDelete = () => {
+    if (!window.confirm(`Delete ${selected.length} product(s)? This is permanent.`)) return;
+    deleteProducts.mutate(selected, {
+      onSuccess: () => {
+        toast.success("Products deleted");
+        setSelected([]);
+      },
+      onError: () => toast.error("Failed to delete products"),
+    });
+  };
+
+  const handleExport = () => {
+    const header = ["Name", "SKU", "Category", "Price", "Sale price", "Stock", "Status", "Created"];
+    const lines = rows.map((p) =>
+      [p.name, p.sku, p.category, p.price, p.salePrice ?? "", p.qty, p.status, p.created].join(","),
+    );
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Catalogue exported as CSV");
+  };
 
   return (
     <div className="space-y-8">
@@ -58,7 +116,7 @@ function ProductsPage() {
         actions={
           <>
             <button
-              onClick={() => toast.success("Catalogue exported as CSV")}
+              onClick={handleExport}
               className="inline-flex h-10 items-center gap-2 border border-border bg-card px-4 text-sm transition-colors hover:border-gold"
             >
               <Download className="size-4" strokeWidth={1.5} /> Export
@@ -125,14 +183,14 @@ function ProductsPage() {
       {selected.length > 0 && (
         <div className="flex items-center gap-3 border border-gold bg-gold-soft/30 px-4 py-3 text-sm">
           <span>{selected.length} selected</span>
-          <button onClick={() => toast.success("Products published")} className="text-xs tracking-widest hover:text-gold">
+          <button onClick={handlePublish} className="text-xs tracking-widest hover:text-gold">
             PUBLISH
           </button>
-          <button onClick={() => toast.success("Products moved to draft")} className="text-xs tracking-widest hover:text-gold">
+          <button onClick={handleDraft} className="text-xs tracking-widest hover:text-gold">
             DRAFT
           </button>
           <button
-            onClick={() => toast.error("Deleting products is permanent — confirm in the dialog")}
+            onClick={handleDelete}
             className="inline-flex items-center gap-1.5 text-xs tracking-widest text-destructive"
           >
             <Trash2 className="size-3.5" /> DELETE
@@ -144,7 +202,11 @@ function ProductsPage() {
       )}
 
       <div className="surface overflow-x-auto">
-        {rows.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading products…
+          </div>
+        ) : rows.length === 0 ? (
           <EmptyState
             title="No pieces match that search"
             description="Try a different name, SKU, category or status filter."
