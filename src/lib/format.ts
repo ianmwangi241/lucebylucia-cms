@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
+const SITE_IMAGES_BUCKET = "site-images";
 
 export function KES(amount: number | null | undefined) {
   if (amount === null || amount === undefined) return "—";
@@ -23,4 +24,15 @@ export function assetUrl(storagePath: string | null | undefined) {
   return data.publicUrl;
 }
 
-export { PRODUCT_IMAGES_BUCKET };
+/**
+ * Same idea as assetUrl(), but for general site/editorial imagery stored in
+ * cms_media (homepage sections, media library) rather than product photography.
+ */
+export function siteAssetUrl(storagePath: string | null | undefined) {
+  if (!storagePath) return "/placeholder-product.png";
+  const supabase = createClient();
+  const { data } = supabase.storage.from(SITE_IMAGES_BUCKET).getPublicUrl(storagePath);
+  return data.publicUrl;
+}
+
+export { PRODUCT_IMAGES_BUCKET, SITE_IMAGES_BUCKET };
