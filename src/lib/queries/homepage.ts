@@ -16,7 +16,7 @@ const DEFAULT_SECTIONS: { type: string; title: string; content: string }[] = [
 ];
 
 export interface HomeSection {
-  dbId: string; // cms_sections.id (uuid) — use for keys, toggling, reordering
+  dbId: number; // cms_sections.id (number) — use for keys, toggling, reordering
   type: string; // cms_sections.section_type — use for "which kind of section is this" logic
   name: string; // cms_sections.title
   summary: string; // cms_sections.content
@@ -51,7 +51,7 @@ export function useHomeSections() {
       if (error) throw error;
 
       return (data ?? []).map((s) => ({
-        dbId: String(s.id),
+        dbId: s.id,
         type: s.section_type ?? "generic",
         name: s.title ?? "",
         summary: s.content ?? "",
@@ -73,17 +73,17 @@ export function useSeedHomepage() {
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData.user?.id;
         if (!userId) throw new Error("You must be signed in to set up the homepage");
+        
         const { data, error } = await supabase
           .from("cms_pages")
           .insert({
             title: HOMEPAGE_PAGE_TITLE,
             meta_title: HOMEPAGE_PAGE_TITLE,
             meta_description: "Luce by Lucia homepage",
-            // NOTE: cms_pages.slug is typed as a number in your schema, which looks like it
-            // should be text ("home" / "/"). Using 0 as a placeholder — worth fixing the column type.
             slug: 0,
             status: "Published",
             published_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
             created_by: userId,
           })
           .select("id")
@@ -100,7 +100,7 @@ export function useSeedHomepage() {
           content: s.content,
           is_visible: true,
           sort_order: i,
-          settings: {},
+          settings: {} as any,
         })),
       );
       if (sectionsErr) throw sectionsErr;
@@ -113,18 +113,27 @@ export function useUpdateSection() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: {
-      dbId: string;
+      dbId: number;
       title?: string;
       content?: string;
       enabled?: boolean;
       settings?: Record<string, any>;
     }) => {
       const supabase = createClient();
-      const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+      
+      const payload: {
+        title?: string;
+        content?: string;
+        is_visible?: boolean;
+        settings?: any; // Allow any json-compatible structure
+        updated_at: string;
+      } = { updated_at: new Date().toISOString() };
+
       if (input.title !== undefined) payload.title = input.title;
       if (input.content !== undefined) payload.content = input.content;
       if (input.enabled !== undefined) payload.is_visible = input.enabled;
       if (input.settings !== undefined) payload.settings = input.settings;
+      
       const { error } = await supabase.from("cms_sections").update(payload).eq("id", input.dbId);
       if (error) throw error;
     },
@@ -135,7 +144,7 @@ export function useUpdateSection() {
 export function useReorderSections() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (items: { dbId: string; order: number }[]) => {
+    mutationFn: async (items: { dbId: number; order: number }[]) => {
       const supabase = createClient();
       await Promise.all(
         items.map((it) => supabase.from("cms_sections").update({ sort_order: it.order }).eq("id", it.dbId)),
