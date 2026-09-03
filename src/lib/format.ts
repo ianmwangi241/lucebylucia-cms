@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 
-const PRODUCT_IMAGES_BUCKET = "product-images";
+const PRODUCT_IMAGES_BUCKET = "product_images";
 const SITE_IMAGES_BUCKET = "site-images";
 
 export function KES(amount: number | null | undefined) {
@@ -14,7 +14,7 @@ export function KES(amount: number | null | undefined) {
 
 /**
  * Converts a storage_path (as stored in product_images.storage_path) into a
- * public URL. Assumes the "product-images" bucket is public. If you're using
+ * public URL. Assumes the "product_images" bucket is public. If you're using
  * signed URLs instead, swap getPublicUrl for createSignedUrl and make this async.
  */
 export function assetUrl(storagePath: string | null | undefined) {
