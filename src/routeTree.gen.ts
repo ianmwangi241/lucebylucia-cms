@@ -19,6 +19,7 @@ import { Route as AdminHomepageRouteImport } from './routes/_admin.homepage'
 import { Route as AdminInventoryRouteImport } from './routes/_admin.inventory'
 import { Route as AdminMediaRouteImport } from './routes/_admin.media'
 import { Route as AdminReviewsRouteImport } from './routes/_admin.reviews'
+import { Route as AdminSettingsRouteImport } from './routes/_admin.settings'
 import { Route as AdminCustomersIndexRouteImport } from './routes/_admin.customers.index'
 import { Route as AdminCustomersCustomerIdRouteImport } from './routes/_admin.customers.$customerId'
 import { Route as AdminOrdersIndexRouteImport } from './routes/_admin.orders.index'
@@ -76,6 +77,11 @@ const AdminReviewsRoute = AdminReviewsRouteImport.update({
   path: '/reviews',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCustomersIndexRoute = AdminCustomersIndexRouteImport.update({
   id: '/customers/',
   path: '/customers/',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof AdminInventoryRoute
   '/media': typeof AdminMediaRoute
   '/reviews': typeof AdminReviewsRoute
+  '/settings': typeof AdminSettingsRoute
   '/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/products/$productId': typeof AdminProductsProductIdRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof AdminInventoryRoute
   '/media': typeof AdminMediaRoute
   '/reviews': typeof AdminReviewsRoute
+  '/settings': typeof AdminSettingsRoute
   '/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/products/$productId': typeof AdminProductsProductIdRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/_admin/inventory': typeof AdminInventoryRoute
   '/_admin/media': typeof AdminMediaRoute
   '/_admin/reviews': typeof AdminReviewsRoute
+  '/_admin/settings': typeof AdminSettingsRoute
   '/_admin/customers/$customerId': typeof AdminCustomersCustomerIdRoute
   '/_admin/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/_admin/products/$productId': typeof AdminProductsProductIdRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/media'
     | '/reviews'
+    | '/settings'
     | '/customers/$customerId'
     | '/orders/$orderId'
     | '/products/$productId'
@@ -199,6 +209,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/media'
     | '/reviews'
+    | '/settings'
     | '/customers/$customerId'
     | '/orders/$orderId'
     | '/products/$productId'
@@ -218,6 +229,7 @@ export interface FileRouteTypes {
     | '/_admin/inventory'
     | '/_admin/media'
     | '/_admin/reviews'
+    | '/_admin/settings'
     | '/_admin/customers/$customerId'
     | '/_admin/orders/$orderId'
     | '/_admin/products/$productId'
@@ -304,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminReviewsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_admin/settings': {
+      id: '/_admin/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/_admin/customers/': {
       id: '/_admin/customers/'
       path: '/customers'
@@ -365,6 +384,7 @@ interface AdminRouteChildren {
   AdminInventoryRoute: typeof AdminInventoryRoute
   AdminMediaRoute: typeof AdminMediaRoute
   AdminReviewsRoute: typeof AdminReviewsRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
   AdminCustomersCustomerIdRoute: typeof AdminCustomersCustomerIdRoute
   AdminOrdersOrderIdRoute: typeof AdminOrdersOrderIdRoute
   AdminProductsProductIdRoute: typeof AdminProductsProductIdRoute
@@ -383,6 +403,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminInventoryRoute: AdminInventoryRoute,
   AdminMediaRoute: AdminMediaRoute,
   AdminReviewsRoute: AdminReviewsRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
   AdminCustomersCustomerIdRoute: AdminCustomersCustomerIdRoute,
   AdminOrdersOrderIdRoute: AdminOrdersOrderIdRoute,
   AdminProductsProductIdRoute: AdminProductsProductIdRoute,
